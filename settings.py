@@ -35,3 +35,7 @@ CUSTOM_MODEL1 = MODEL_DIR / 'pot.pt'
 CUSTOM_MODEL2 = MODEL_DIR / 'car.pt'
 CUSTOM_MODEL3 = MODEL_DIR / 'ppe.pt'
 
+# Modèle dédié à la détection vidéo (YOLO fine-tuné chauves-souris)
+# Poids issus de l'entraînement : train2/weights/
+VIDEO_DETECTION_MODEL = root_path / 'train2' / 'weights' / 'best.pt'
+

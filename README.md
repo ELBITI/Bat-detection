@@ -1,22 +1,92 @@
-# yolov8-streamlit-app 
-* An object/segmentation detection app created using streamlit. Refer below for all the features of the app
-* Model used: https://github.com/ultralytics/ultralytics
-* App link: https://yolov8-app.streamlit.app/
-* Link to EasyOCR: https://github.com/JaidedAI/EasyOCR
-* NOTE: The streamlit app might not work if the GitLFS's free bandwidth exceeds 1 gb.
+# 🦇 Détection de Chauves-Souris — YOLOv8 Streamlit
 
-# App Features 
-* Object **detection/segmentation** using pre-trained yoloV8 model (trained on Open Images V7 dataset with 600 distinct classes) , refer to openimages.txt for the list of objects detectable using the base model
-  
-* Custom-trained yolov8 model **for detecting potholes** 
-  
-* Custom-trained yolov8 model **for detecting car license plates** 
-  
-* Integrated license plate detector with EasyOCR for **reading license plates**. Additionally, added an image preprocessing function to handle images with brightness and Image glare issues
-  
-* Custom-trained yolov8 model **to detect PPE** (7 classes: ['Protective Helm', 'Shield', 'Jacket', 'Dust Mask', 'Eye Wear, 'Glove, 'Protective Boots')
-  
-* To use your custom trained model, just add your .pt files into the weights and make some minor changes to the settings.py and app.py files **(Note: If your model's weights are >25mb, you will need to us Git LFS to upload your files)**
+Application de détection automatique de chauves-souris avec support GPU/CPU.
+
+## 🚀 Lancer en local
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## 🌐 Déployer sur un serveur
+
+### Streamlit Cloud (sans GPU — gratuit)
+
+1. Poussez le code sur GitHub
+2. Allez sur [share.streamlit.io](https://share.streamlit.io)
+3. Connectez votre repo GitHub
+4. L'app utilisera le CPU automatiquement
+
+### Serveur avec GPU (AWS, Heroku, Azure, etc.)
+
+**Important :** Utilisez `environment.yml` pour installer les dépendances correctement :
+
+```bash
+# Sur le serveur
+conda env create -f environment.yml
+conda activate bat-detection
+streamlit run app.py
+```
+
+Ou avec pip (nécessite PyTorch CUDA pré-installé) :
+
+```bash
+pip install -r requirements.txt
+# Puis installer PyTorch CUDA manuellement
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+streamlit run app.py
+```
+
+## 📱 Utilisation
+
+### Mode Image
+1. Choisir une image dans la barre latérale
+2. Cliquer sur "Détecter les chauves-souris"
+3. Voir les résultats avec boîtes délimitantes
+
+### Mode Vidéo
+1. Uploader une vidéo
+2. Cliquer sur "Lancer l'analyse"
+3. La vidéo s'exécute en continu
+4. Utiliser la checkbox "Lecture automatique" pour mettre en pause/reprendre
+5. Cliquer "Arrêter l'analyse" pour finir
+
+## ⚙️ Configuration GPU/CPU
+
+- **GPU détecté** → Utilisé par défaut (checkbox cochée)
+- **Pas de GPU** → CPU automatiquement (checkbox décochée)
+- **Cocher/décocher** la case "Utiliser GPU si disponible" → Active/désactive le GPU en temps réel
+
+L'app détecte automatiquement si l'utilisateur a un GPU NVIDIA. Rien à faire — ça marche pour tout le monde !
+
+## 📦 Fichiers principaux
+
+- `app.py` — Interface Streamlit
+- `helper.py` — Fonctions YOLOv8 et traitement vidéo
+- `settings.py` — Chemins et configuration
+- `requirements.txt` — Dépendances Python (CPU)
+- `environment.yml` — Dépendances Conda (GPU avec CUDA 11.8)
+
+## ✅ Compatibilité
+
+- Python 3.9+
+- Windows, Linux, macOS
+- Fonctionne avec ou sans GPU NVIDIA
+- YOLOv8 (Ultralytics)
+- Streamlit 1.26+
+
+## 🐛 Dépannage
+
+**Q: GPU n'est pas détecté malgré `nvidia-smi OK`**
+- Vérifiez : `python -c "import torch; print(torch.cuda.is_available())"`
+- Réinstallez PyTorch CUDA si faux
+
+**Q: Vidéo très lente**
+- Baissez la résolution de la vidéo d'entrée
+
+**Q: Erreur "Modèle introuvable"**
+- Vérifiez que `train2/weights/best.pt` existe dans le répertoire projet
 
 # Custom-trained model's result:
 |    Custom-trained models    |      mAP50      | mAP50-95|

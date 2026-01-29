@@ -5,8 +5,13 @@ from pytube import YouTube
 import tempfile
 import easyocr 
 import numpy as np
+import time
+import torch
 
-def load_model(model_path):
+# Module-level device (set by load_model)
+DEVICE = 'cpu'
+
+def load_model(model_path, use_gpu=None):
     """
     Loads a YOLO object detection model from the specified model_path.
 
@@ -16,7 +21,18 @@ def load_model(model_path):
     Returns:
         A YOLO object detection model.
     """
+    global DEVICE
+    # determine device: respect explicit use_gpu when provided, otherwise auto-detect
+    if use_gpu is None:
+        DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+    else:
+        DEVICE = 'cuda' if (use_gpu and torch.cuda.is_available()) else 'cpu'
     model = YOLO(model_path)
+    try:
+        model.to(DEVICE)
+    except Exception:
+        # some YOLO versions may not support .to() in same way; ignore if fails
+        pass
     return model
 
 def _display_detected_frames(conf, model, st_frame, image):
@@ -30,14 +46,14 @@ def _display_detected_frames(conf, model, st_frame, image):
     """
     
     # Predict the objects in the image using YOLOv8 model
-    res = model.predict(image, conf=conf)
+    res = model.predict(image, conf=conf, device=DEVICE)
     
     # Plot the detected objects on the video frame
     res_plotted = res[0].plot()
     st_frame.image(res_plotted,
-                   caption='Detected Video',
+                   caption='Vidéo annotée — Chauves-souris détectées',
                    channels="BGR",
-                   use_column_width=True
+                   use_container_width=True
                    )
 
 
@@ -115,40 +131,92 @@ def play_webcam(conf, model):
 
 def infer_uploaded_video(conf, model):
     """
-    Execute inference for uploaded video
-    :param conf: Confidence of YOLOv8 model
-    :param model: An instance of the `YOLOv8` class containing the YOLOv8 model.
-    :return: None
+    Vidéo en direct + détection. La lecture continue tant que tu ne cliques pas sur Pause.
+    Tu arrêtes quand tu veux avec le bouton Pause, puis Reprendre pour continuer.
     """
+    VIDEO_PATH = "video_analysis_path"
+    FRAME_INDEX = "video_analysis_frame"
+    TOTAL_FRAMES = "video_analysis_total"
+    FILE_ID = "video_analysis_file_id"
+    AUTO_ADVANCE = "video_analysis_playing"  # True = lecture en cours, False = en pause
+
     source_video = st.sidebar.file_uploader(
-        label="Choose a video..."
+        label="Choisir une vidéo...",
+        type=["mp4", "avi", "mov", "mkv"],
+        help="Vidéo à analyser pour la détection de chauves-souris"
     )
 
     if source_video:
+        file_id = source_video.name + "_" + str(source_video.size)
+        if FILE_ID in st.session_state and st.session_state.get(FILE_ID) != file_id:
+            for k in [VIDEO_PATH, FRAME_INDEX, TOTAL_FRAMES, FILE_ID, AUTO_ADVANCE]:
+                if k in st.session_state:
+                    del st.session_state[k]
+        st.markdown("**Aperçu de la vidéo**")
         st.video(source_video)
 
-    if source_video:
-        if st.button("Execution"):
-            with st.spinner("Running..."):
-                try:
-                    tfile = tempfile.NamedTemporaryFile()
-                    tfile.write(source_video.read())
-                    vid_cap = cv2.VideoCapture(
-                        tfile.name)
-                    st_frame = st.empty()
-                    while (vid_cap.isOpened()):
-                        success, image = vid_cap.read()
-                        if success:
-                            _display_detected_frames(conf,
-                                                     model,
-                                                     st_frame,
-                                                     image
-                                                     )
-                        else:
-                            vid_cap.release()
-                            break
-                except Exception as e:
-                    st.error(f"Error loading video: {e}")
+    if not source_video:
+        return
+
+    st.markdown("---")
+    st.markdown("**Résultat de l'analyse**")
+
+    # Single control in sidebar (no dynamic checkbox creation)
+    autoplay = st.sidebar.checkbox("Lecture automatique", value=True, key="autoplay_state")
+    stop_btn = st.sidebar.button("Arrêter l'analyse")
+
+    if st.button("Lancer l'analyse", type="primary"):
+        try:
+            # Save uploaded video to a temp file
+            tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+            tfile.write(source_video.getvalue())
+            tfile.flush()
+            path = tfile.name
+            tfile.close()
+
+            cap = cv2.VideoCapture(path)
+            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+            st_frame = st.empty()
+
+            frame_idx = 0
+            # Continuous loop: process frames in this run (no st.rerun())
+            while cap.isOpened():
+                if stop_btn:
+                    break
+
+                ret, image = cap.read()
+                if not ret:
+                    break
+
+                # Run inference and show frame
+                res = model.predict(image, conf=conf, device=DEVICE)
+                res_plotted = res[0].plot()
+                st_frame.image(res_plotted,
+                               caption=f"Vidéo annotée — Chauves-souris détectées · Frame {frame_idx + 1} / {total}",
+                               channels="BGR",
+                               use_container_width=True)
+
+                frame_idx += 1
+
+                # Check latest autoplay state from sidebar checkbox
+                autoplay_state = st.session_state.get("autoplay_state", True)
+                if not autoplay_state:
+                    st.sidebar.info("Lecture en pause — cochez 'Lecture automatique' pour reprendre.")
+                    # Wait until user resumes
+                    while not st.session_state.get("autoplay_state", True):
+                        if stop_btn:
+                            cap.release()
+                            return
+                        time.sleep(0.2)
+
+                # small delay to avoid UI flooding
+                time.sleep(0.02)
+
+            cap.release()
+            st.success("Analyse terminée.")
+
+        except Exception as e:
+            st.error(f"Erreur : {e}")
 
 def upload_easyocr(conf, model):
     """
@@ -195,10 +263,10 @@ def detected_frames(conf, model, st_frame, image):
     :param image (numpy array): A numpy array representing the video frame.
     :return: None
     """
-    reader = easyocr.Reader(['en'], gpu=False)
+    reader = easyocr.Reader(['en'], gpu=(DEVICE == 'cuda'))
 
     # Predict the objects in the image using YOLOv8 model
-    res = model.predict(image, conf=conf)
+    res = model.predict(image, conf=conf, device=DEVICE)
 
     # Create a copy of the original frame to modify
     modified_frame = image.copy()
@@ -248,7 +316,7 @@ def detected_frames(conf, model, st_frame, image):
             cv2.putText(modified_frame, license_plate_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
 
     # Display the modified frame with updated bounding boxes and license plate text
-    st_frame.image(modified_frame, caption='Detected Video', channels="BGR", use_column_width=True)
+    st_frame.image(modified_frame, caption='Detected Video', channels="BGR", use_container_width=True)
 
 # Function to apply flood fill and other processing to the image
 def process_license_plate(license_plate_image, floodfill_threshold, threshold_block_size, brightness):

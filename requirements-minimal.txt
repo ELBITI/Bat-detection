@@ -1,0 +1,9 @@
+# Dépendances minimales pour YOLOv8-Streamlit (versions flexibles)
+# Utilisez Python 3.10, 3.11 ou 3.12 (Python 3.13 peut poser problème avec ultralytics)
+streamlit>=1.26
+ultralytics>=8.0
+opencv-python-headless>=4.8
+easyocr>=1.7
+Pillow>=9.5
+pytube>=15.0
+numpy>=1.24

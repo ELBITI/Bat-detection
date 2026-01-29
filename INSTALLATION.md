@@ -41,6 +41,16 @@ Au lancement de l'app Streamlit :
 - ✅ Si tu n'as pas GPU → checkbox décochée, app fonctionne en CPU
 - ✅ Tu peux cocher/décocher manuellement dans la barre latérale
 
+### Dépannage spécifique Streamlit Cloud
+Si l'app plante à l'import `import cv2` (erreur `ModuleNotFoundError: No module named 'cv2'`), c'est généralement dû à une incompatibilité entre la version Python fournie par l'environnement Streamlit Cloud et les roues OpenCV disponibles.
+
+Solutions recommandées :
+- Dans les settings Streamlit Cloud, forcer une version de Python prise en charge (par exemple Python 3.11) si l'option est disponible.
+- Pinner une version compatible de `opencv-python-headless` dans `requirements.txt`.
+- Si tu contrôles le serveur (ex: AWS), utilise `environment.yml` pour garantir CUDA/Python/apt deps.
+
+Pendant que je détecte automatiquement si `cv2` est présent, l'application affichera maintenant un message clair dans l'UI si OpenCV est absent.
+
 ## Dépannage
 
 **Q: J'ai un GPU mais la checkbox dit "GPU non disponible"**

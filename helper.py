@@ -1,6 +1,13 @@
 from ultralytics import YOLO
 import streamlit as st
-import cv2
+# Handle systems where OpenCV is not installable (avoid hard crash at import)
+try:
+    import cv2
+    HAS_CV2 = True
+except Exception as _ex:
+    cv2 = None
+    HAS_CV2 = False
+    CV2_IMPORT_ERROR = str(_ex)
 from pytube import YouTube
 import tempfile
 import easyocr 
@@ -53,7 +60,7 @@ def _display_detected_frames(conf, model, st_frame, image):
     st_frame.image(res_plotted,
                    caption='Vidéo annotée — Chauves-souris détectées',
                    channels="BGR",
-                   use_container_width=True
+                   width='stretch'
                    )
 
 
@@ -75,6 +82,9 @@ def play_youtube_video(conf, model):
     source_youtube = st.sidebar.text_input("YouTube Video url")
 
     if st.sidebar.button('Detect Objects'):
+        if not HAS_CV2:
+            st.sidebar.error("OpenCV (cv2) n'est pas disponible — cette fonctionnalité est désactivée sur ce serveur.")
+            return
         try:
             yt = YouTube(source_youtube)
             stream = yt.streams.filter(file_extension="mp4", res=720).first()
@@ -111,6 +121,9 @@ def play_webcam(conf, model):
         None
     """
     if st.sidebar.button('Detect Objects'):
+        if not HAS_CV2:
+            st.sidebar.error("OpenCV (cv2) n'est pas disponible — cette fonctionnalité est désactivée sur ce serveur.")
+            return
         try:
             vid_cap = cv2.VideoCapture(0)
             st_frame = st.empty()
@@ -194,7 +207,7 @@ def infer_uploaded_video(conf, model):
                 st_frame.image(res_plotted,
                                caption=f"Vidéo annotée — Chauves-souris détectées · Frame {frame_idx + 1} / {total}",
                                channels="BGR",
-                               use_container_width=True)
+                               width='stretch')
 
                 frame_idx += 1
 
@@ -263,6 +276,11 @@ def detected_frames(conf, model, st_frame, image):
     :param image (numpy array): A numpy array representing the video frame.
     :return: None
     """
+    # If OpenCV is not available in the deployment environment, show the raw frame and skip processing
+    if not HAS_CV2:
+        st_frame.image(image, caption='OpenCV non disponible — affichage brut', width='stretch')
+        return
+
     reader = easyocr.Reader(['en'], gpu=(DEVICE == 'cuda'))
 
     # Predict the objects in the image using YOLOv8 model
@@ -316,7 +334,7 @@ def detected_frames(conf, model, st_frame, image):
             cv2.putText(modified_frame, license_plate_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
 
     # Display the modified frame with updated bounding boxes and license plate text
-    st_frame.image(modified_frame, caption='Detected Video', channels="BGR", use_container_width=True)
+    st_frame.image(modified_frame, caption='Detected Video', channels="BGR", width='stretch')
 
 # Function to apply flood fill and other processing to the image
 def process_license_plate(license_plate_image, floodfill_threshold, threshold_block_size, brightness):

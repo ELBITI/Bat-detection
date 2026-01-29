@@ -4,7 +4,14 @@ import PIL
 
 # External packages
 import streamlit as st
-import cv2
+# OpenCV may not be available in some deployment environments (Streamlit Cloud & certain Python versions)
+try:
+    import cv2
+    HAS_CV2 = True
+except Exception as _ex:
+    cv2 = None
+    HAS_CV2 = False
+    CV2_IMPORT_ERROR = str(_ex)
 import numpy as np
 import torch
 
@@ -234,6 +241,13 @@ if default_gpu:
 else:
     st.sidebar.info("ℹ️ Pas de GPU — Utilisation du CPU")
 
+# OpenCV status in sidebar (helps debugging on Streamlit Cloud)
+if 'HAS_CV2' in globals() and not HAS_CV2:
+    st.sidebar.warning("⚠️ OpenCV (cv2) non installé dans l'environnement — les fonctions vidéo sont désactivées.")
+    if 'CV2_IMPORT_ERROR' in globals():
+        st.sidebar.caption(f"Erreur d'import : {CV2_IMPORT_ERROR}")
+    st.sidebar.caption("Conseil : utiliser Python 3.11 sur le serveur ou pinner 'opencv-python-headless' dans requirements.txt")
+
 # Checkbox pour activer/désactiver GPU
 use_gpu = st.sidebar.checkbox("Utiliser GPU si disponible", value=default_gpu)
 st.session_state["use_gpu_option"] = use_gpu
@@ -263,10 +277,10 @@ if source_radio == settings.IMAGE:
         try:
             if source_img is None:
                 default_path = str(settings.DEFAULT_IMAGE)
-                st.image(default_path, caption="Image par défaut", use_container_width=True)
+                st.image(default_path, caption="Image par défaut", width='stretch')
             else:
                 uploaded_image = PIL.Image.open(source_img)
-                st.image(source_img, caption="Image chargée", use_container_width=True)
+                st.image(source_img, caption="Image chargée", width='stretch')
         except Exception as ex:
             st.error("Erreur lors du chargement de l'image.")
             st.error(ex)
@@ -276,7 +290,7 @@ if source_radio == settings.IMAGE:
         if source_img is None:
             default_det_path = str(settings.DEFAULT_DETECT_IMAGE)
             try:
-                st.image(default_det_path, caption="Exemple de détection", use_container_width=True)
+                st.image(default_det_path, caption="Exemple de détection", width='stretch')
             except Exception:
                 st.info("Chargez une image puis cliquez sur **Détecter les chauves-souris**.")
         else:
@@ -288,7 +302,7 @@ if source_radio == settings.IMAGE:
                         st.warning("Aucune chauve-souris détectée sur cette image.")
                     else:
                         res_plotted = res[0].plot()[:, :, ::-1]
-                        st.image(res_plotted, caption=f"Détection — {len(boxes)} individu(s) détecté(s)", use_container_width=True)
+                        st.image(res_plotted, caption=f"Détection — {len(boxes)} individu(s) détecté(s)", width='stretch')
                         with st.expander("Détails des détections"):
                             for i, box in enumerate(boxes):
                                 st.write(f"**Détection {i+1}** : ", box.data)
@@ -304,7 +318,13 @@ elif source_radio == settings.VIDEO:
 
     st.markdown("""<p class="workspace-title">Espace d'analyse vidéo</p>""", unsafe_allow_html=True)
     st.sidebar.markdown('<p class="sidebar-section">Vidéo</p>', unsafe_allow_html=True)
-    helper.infer_uploaded_video(confidence, model)
+
+    if not HAS_CV2:
+        st.error("OpenCV (cv2) n'est pas installé dans cet environnement. Les fonctionnalités vidéo sont désactivées.")
+        st.markdown("**Dépannage rapide :** Vérifiez les logs de déploiement ; installez `opencv-python-headless` compatible ou utilisez Python 3.11 sur le serveur.")
+        st.markdown("En local, exécutez : `pip install opencv-python-headless`")
+    else:
+        helper.infer_uploaded_video(confidence, model)
 
 else:
     st.info("Sélectionnez **Vidéo** ou **Image** dans la barre latérale.")

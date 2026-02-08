@@ -312,7 +312,7 @@ elif source_radio == settings.VIDEO:
     st.markdown("""
     <div class="info-card">
         <strong>Comment utiliser :</strong> Uploadez une vidéo dans la barre latérale, puis cliquez sur <strong>Lancer l'analyse</strong>. 
-        Les chauves-souris détectées s'affichent sur la vidéo ; vous pouvez récupérer une vidéo annotée en sortie.
+        Les chauves-souris détectées s'affichent sur la vidéo vous pouvez récupérer une vidéo annotée en sortie.
     </div>
     """, unsafe_allow_html=True)
 
@@ -321,7 +321,7 @@ elif source_radio == settings.VIDEO:
 
     if not HAS_CV2:
         st.error("OpenCV (cv2) n'est pas installé dans cet environnement. Les fonctionnalités vidéo sont désactivées.")
-        st.markdown("**Dépannage rapide :** Vérifiez les logs de déploiement ; installez `opencv-python-headless` compatible ou utilisez Python 3.11 sur le serveur.")
+        st.markdown("**Dépannage rapide :** Vérifiez les logs de déploiement, installez `opencv-python-headless` compatible ou utilisez Python 3.11 sur le serveur.")
         st.markdown("En local, exécutez : `pip install opencv-python-headless`")
     else:
         helper.infer_uploaded_video(confidence, model)

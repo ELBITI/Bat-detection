@@ -39,3 +39,10 @@ CUSTOM_MODEL3 = MODEL_DIR / 'ppe.pt'
 # Poids issus de l'entraînement : train2/weights/
 VIDEO_DETECTION_MODEL = root_path / 'train2' / 'weights' / 'best.pt'
 
+# SAHI slicing inference (optional)
+USE_SAHI = True
+SAHI_SLICE_HEIGHT = 416
+SAHI_SLICE_WIDTH = 416
+SAHI_OVERLAP_HEIGHT = 0.35
+SAHI_OVERLAP_WIDTH = 0.35
+

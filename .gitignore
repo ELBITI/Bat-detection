@@ -141,3 +141,15 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+# Bat Detection - Local files
+__pycache__/
+venv/
+.venv/
+.ipynb_checkpoints/
+
+# Environment variables
+.env
+.env.*
+
+# IDE
+.idea/

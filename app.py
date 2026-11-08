@@ -207,7 +207,7 @@ confidence = float(st.sidebar.slider(
     "Seuil de confiance (%)",
     min_value=25,
     max_value=95,
-    value=50,
+    value=30,
     step=5
 )) / 100
 
@@ -277,10 +277,10 @@ if source_radio == settings.IMAGE:
         try:
             if source_img is None:
                 default_path = str(settings.DEFAULT_IMAGE)
-                st.image(default_path, caption="Image par défaut", width='stretch')
+                st.image(default_path, caption="Image par défaut", use_column_width=True)
             else:
                 uploaded_image = PIL.Image.open(source_img)
-                st.image(source_img, caption="Image chargée", width='stretch')
+                st.image(source_img, caption="Image chargée", use_column_width=True)
         except Exception as ex:
             st.error("Erreur lors du chargement de l'image.")
             st.error(ex)
@@ -290,7 +290,7 @@ if source_radio == settings.IMAGE:
         if source_img is None:
             default_det_path = str(settings.DEFAULT_DETECT_IMAGE)
             try:
-                st.image(default_det_path, caption="Exemple de détection", width='stretch')
+                st.image(default_det_path, caption="Exemple de détection", use_column_width=True)
             except Exception:
                 st.info("Chargez une image puis cliquez sur **Détecter les chauves-souris**.")
         else:
@@ -302,7 +302,7 @@ if source_radio == settings.IMAGE:
                         st.warning("Aucune chauve-souris détectée sur cette image.")
                     else:
                         res_plotted = res[0].plot()[:, :, ::-1]
-                        st.image(res_plotted, caption=f"Détection — {len(boxes)} individu(s) détecté(s)", width='stretch')
+                        st.image(res_plotted, caption=f"Détection — {len(boxes)} individu(s) détecté(s)", use_column_width=True)
                         with st.expander("Détails des détections"):
                             for i, box in enumerate(boxes):
                                 st.write(f"**Détection {i+1}** : ", box.data)
@@ -318,13 +318,15 @@ elif source_radio == settings.VIDEO:
 
     st.markdown("""<p class="workspace-title">Espace d'analyse vidéo</p>""", unsafe_allow_html=True)
     st.sidebar.markdown('<p class="sidebar-section">Vidéo</p>', unsafe_allow_html=True)
+    st.sidebar.markdown('<p class="sidebar-section">Analyse</p>', unsafe_allow_html=True)
+    use_tracking = st.sidebar.checkbox("Activer le tracking", value=False)
 
     if not HAS_CV2:
         st.error("OpenCV (cv2) n'est pas installé dans cet environnement. Les fonctionnalités vidéo sont désactivées.")
         st.markdown("**Dépannage rapide :** Vérifiez les logs de déploiement, installez `opencv-python-headless` compatible ou utilisez Python 3.11 sur le serveur.")
         st.markdown("En local, exécutez : `pip install opencv-python-headless`")
     else:
-        helper.infer_uploaded_video(confidence, model)
+        helper.infer_uploaded_video(confidence, model, use_tracking=use_tracking)
 
 else:
     st.info("Sélectionnez **Vidéo** ou **Image** dans la barre latérale.")

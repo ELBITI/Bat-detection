@@ -17,6 +17,8 @@ import torch
 import math
 import os
 import settings
+from scipy.spatial.distance import cdist
+from scipy.optimize import linear_sum_assignment
 
 try:
     from sahi.predict import get_sliced_prediction
@@ -25,6 +27,73 @@ try:
 except Exception as _ex:
     HAS_SAHI = False
     SAHI_IMPORT_ERROR = str(_ex)
+
+class BatTracker:
+    def __init__(self, max_dist=80, max_lost=8):
+        self.next_id = 0
+        self.tracks = {}
+        self.max_dist = max_dist
+        self.max_lost = max_lost
+
+    def update(self, detections):
+        if len(detections) == 0:
+            for tid in list(self.tracks.keys()):
+                self.tracks[tid]["lost"] += 1
+                if self.tracks[tid]["lost"] > self.max_lost:
+                    del self.tracks[tid]
+            return self.tracks
+
+        centers = np.array([
+            [(x1 + x2) / 2, (y1 + y2) / 2] for x1, y1, x2, y2 in detections
+        ])
+
+        if len(self.tracks) == 0:
+            for box, c in zip(detections, centers):
+                self.tracks[self.next_id] = {
+                    "bbox": box,
+                    "center": c,
+                    "lost": 0
+                }
+                self.next_id += 1
+            return self.tracks
+
+        track_ids = list(self.tracks.keys())
+        track_centers = np.array([self.tracks[i]["center"] for i in track_ids])
+
+        D = cdist(track_centers, centers)
+
+        rows, cols = linear_sum_assignment(D)
+        assigned_tracks = set()
+        assigned_dets = set()
+
+        for r, c in zip(rows, cols):
+            if D[r, c] > self.max_dist:
+                continue
+            tid = track_ids[r]
+            self.tracks[tid]["bbox"] = detections[c]
+            self.tracks[tid]["center"] = centers[c]
+            self.tracks[tid]["lost"] = 0
+            assigned_tracks.add(r)
+            assigned_dets.add(c)
+
+        for i, tid in enumerate(track_ids):
+            if i not in assigned_tracks:
+                self.tracks[tid]["lost"] += 1
+
+        for tid in list(self.tracks.keys()):
+            if self.tracks[tid]["lost"] > self.max_lost:
+                del self.tracks[tid]
+
+        for i, box in enumerate(detections):
+            if i not in assigned_dets:
+                self.tracks[self.next_id] = {
+                    "bbox": box,
+                    "center": centers[i],
+                    "lost": 0
+                }
+                self.next_id += 1
+
+        return self.tracks
 
 # Module-level device (set by load_model)
 DEVICE = 'cpu'
@@ -107,7 +176,7 @@ def _get_sahi_model(conf):
         return None
     model_path = str(settings.VIDEO_DETECTION_MODEL)
     return AutoDetectionModel.from_pretrained(
-        model_type="ultralytics",
+        model_type="yolov8",
         model_path=model_path,
         confidence_threshold=conf,
         device=DEVICE,
@@ -155,7 +224,7 @@ def _display_detected_frames(conf, model, st_frame, image):
     st_frame.image(res_plotted,
                    caption='Vidéo annotée — Chauves-souris détectées',
                    channels="BGR",
-                   width='stretch'
+                   use_column_width=True
                    )
 
 
@@ -237,7 +306,7 @@ def play_webcam(conf, model):
             st.sidebar.error("Error loading video: " + str(e))
 
 
-def infer_uploaded_video(conf, model):
+def infer_uploaded_video(conf, model, use_tracking=False):
     """
     Vidéo en direct + détection. La lecture continue tant que tu ne cliques pas sur Pause.
     Tu arrêtes quand tu veux avec le bouton Pause, puis Reprendre pour continuer.
@@ -283,6 +352,7 @@ def infer_uploaded_video(conf, model):
                     use_sahi = False
                 else:
                     sahi_model = _get_sahi_model(conf)
+            tracker = BatTracker(max_dist=80, max_lost=8) if use_tracking else None
             # Save uploaded video to a temp file
             tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
             tfile.write(source_video.getvalue())
@@ -326,29 +396,91 @@ def infer_uploaded_video(conf, model):
                         overlap_height_ratio=getattr(settings, "SAHI_OVERLAP_HEIGHT", 0.35),
                         overlap_width_ratio=getattr(settings, "SAHI_OVERLAP_WIDTH", 0.35),
                     )
-                    modified_frame = image_proc.copy()
                     scores = []
+                    boxes = []
                     for obj in result.object_prediction_list:
                         x1, y1, x2, y2 = obj.bbox.to_xyxy()
                         score = float(obj.score.value)
+                        boxes.append([x1, y1, x2, y2])
                         scores.append(score)
-                        cv2.rectangle(
-                            modified_frame,
-                            (int(x1), int(y1)),
-                            (int(x2), int(y2)),
-                            (0, 255, 0),
-                            2,
-                            lineType=cv2.LINE_AA
-                        )
-                    res_plotted = modified_frame
-                    count = int(len(scores))
                     conf_vals = np.array(scores, dtype=float) if scores else np.array([], dtype=float)
+                    if use_tracking and boxes:
+                        tracks = tracker.update(boxes)
+                        res_plotted = image_proc.copy()
+                        for tid, t in tracks.items():
+                            if t["lost"] > 0:
+                                continue
+                            x1, y1, x2, y2 = map(int, t["bbox"])
+                            cv2.rectangle(
+                                res_plotted,
+                                (x1, y1),
+                                (x2, y2),
+                                (0, 255, 0),
+                                2,
+                                lineType=cv2.LINE_AA
+                            )
+                            cv2.putText(
+                                res_plotted,
+                                f"ID {tid}",
+                                (x1, max(0, y1 - 5)),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                (0, 255, 0),
+                                1,
+                                lineType=cv2.LINE_AA
+                            )
+                        count = int(len(tracks))
+                    else:
+                        modified_frame = image_proc.copy()
+                        for x1, y1, x2, y2 in boxes:
+                            cv2.rectangle(
+                                modified_frame,
+                                (int(x1), int(y1)),
+                                (int(x2), int(y2)),
+                                (0, 255, 0),
+                                2,
+                                lineType=cv2.LINE_AA
+                            )
+                        res_plotted = modified_frame
+                        count = int(len(scores))
                 else:
                     res = model.predict(image_proc, conf=conf, device=DEVICE)
                     boxes = res[0].boxes
                     count = int(len(boxes))
                     conf_vals = boxes.conf.detach().cpu().numpy() if count > 0 and hasattr(boxes, "conf") else np.array([], dtype=float)
-                    res_plotted = res[0].plot()
+                    if use_tracking and count > 0:
+                        xyxy = boxes.xyxy.detach().cpu().numpy() if hasattr(boxes, "xyxy") else None
+                        if xyxy is not None:
+                            dets = xyxy.tolist()
+                            tracks = tracker.update(dets)
+                            res_plotted = image_proc.copy()
+                            for tid, t in tracks.items():
+                                if t["lost"] > 0:
+                                    continue
+                                x1, y1, x2, y2 = map(int, t["bbox"])
+                                cv2.rectangle(
+                                    res_plotted,
+                                    (x1, y1),
+                                    (x2, y2),
+                                    (0, 255, 0),
+                                    2,
+                                    lineType=cv2.LINE_AA
+                                )
+                                cv2.putText(
+                                    res_plotted,
+                                    f"ID {tid}",
+                                    (x1, max(0, y1 - 5)),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (0, 255, 0),
+                                    1,
+                                    lineType=cv2.LINE_AA
+                                )
+                            count = int(len(tracks))
+                        else:
+                            res_plotted = res[0].plot()
+                    else:
+                        res_plotted = res[0].plot()
                 sec = int(frame_idx / fps) if fps > 0 else 0
                 sec_scores[sec] = sec_scores.get(sec, 0) + count
                 sec_max_frame[sec] = max(sec_max_frame.get(sec, 0), count)
@@ -358,7 +490,7 @@ def infer_uploaded_video(conf, model):
                 st_frame.image(res_plotted,
                                caption=f"Vidéo annotée — Chauves-souris détectées · Frame {frame_idx + 1} / {total}",
                                channels="BGR",
-                               width='stretch')
+                               use_column_width=True)
 
                 frame_idx += 1
 
@@ -490,7 +622,7 @@ def detected_frames(conf, model, st_frame, image):
     """
     # If OpenCV is not available in the deployment environment, show the raw frame and skip processing
     if not HAS_CV2:
-        st_frame.image(image, caption='OpenCV non disponible — affichage brut', width='stretch')
+        st_frame.image(image, caption='OpenCV non disponible — affichage brut', use_column_width=True)
         return
 
     reader = easyocr.Reader(['en'], gpu=(DEVICE == 'cuda'))
@@ -546,7 +678,7 @@ def detected_frames(conf, model, st_frame, image):
             cv2.putText(modified_frame, license_plate_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
 
     # Display the modified frame with updated bounding boxes and license plate text
-    st_frame.image(modified_frame, caption='Detected Video', channels="BGR", width='stretch')
+    st_frame.image(modified_frame, caption='Detected Video', channels="BGR", use_column_width=True)
 
 # Function to apply flood fill and other processing to the image
 def process_license_plate(license_plate_image, floodfill_threshold, threshold_block_size, brightness):
